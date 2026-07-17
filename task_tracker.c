@@ -43,12 +43,12 @@ void task_cmd_help() {
     printf(
         "usage: task-tracker <command> [<args>...]\n"
         "  commands:\n"
-        "    add description       - Adds a new task with the given description\n"
-        "    update id description - Updates the description of the task with the given ID\n"
-        "    delete id             - Deletes the task with the given id\n"
-        "    in-progress id        - Marks the task with the given id as \"In Progress\"\n"
-        "    done id               - Marks the task with the given id as \"Done\"\n"
-        "    list [filter]         - Lists all tasks matching a filter. If no filter is given, lists all tasks\n"
+        "    add <task>                  - Adds a new task with the given description\n"
+        "    update <task> <description> - Updates the description of the task with the given ID\n"
+        "    delete <task>               - Deletes the task with the given id\n"
+        "    in-progress <task>          - Marks the task with the given id as \"In Progress\"\n"
+        "    done <task>                 - Marks the task with the given id as \"Done\"\n"
+        "    list [<filter>]             - Lists all tasks matching a filter. If no filter is given, lists all tasks\n"
    );
 }
 
