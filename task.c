@@ -13,27 +13,16 @@ void task_init(task *task, const char* description) {
     }
 
     time(&task->created_at);
-    // use creation time to generate ID
-    // TODO -> less collission-prone algorithm; UUID? Desc hash?
-    srand(task->created_at);
-    task->id = rand();
 
-    const size_t desc_buffer_len = strlen(description) * sizeof(char);
-    task->description = malloc(desc_buffer_len);
+    const size_t desc_buffer_len = (strlen(description) * sizeof(char)) + 1;
+    task->description = calloc(desc_buffer_len, sizeof(char));
     strcpy_s(task->description, desc_buffer_len, description);
 
     task->status = task_status_todo;
-    task->updated_at = (time_t)(-1);
+    task->updated_at = task->created_at;
 
     ENSURES(task->created_at != (time_t)(-1), "Could not set created_at time");
     ENSURES(strcmp(task->description, description) == 0, "Could not copy description text \"%s\"", description);
-}
-
-void task_regenerate_id(task *task) {
-    EXPECTS(task != NULL, "Expected valid task pointer");
-    // regenerate ID, should be used if collision occurs
-    srand(time(0));
-    task->id = rand();
 }
 
 void task_copy(task *dest, const task *src) {
@@ -44,7 +33,6 @@ void task_copy(task *dest, const task *src) {
         return;
     }
 
-    dest->id = src->id;
     const size_t desc_buffer_len = strlen(src->description) * sizeof(char);
     if(dest->description) {
         realloc(dest->description, desc_buffer_len);

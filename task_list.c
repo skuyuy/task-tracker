@@ -1,42 +1,66 @@
+#include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "task_list.h"
 #include "debug.h"
 #include "task.h"
+#include "hash.h"
 
-tl_node *_tl_node_create(const task *task_ptr) {
-    EXPECTS(task_ptr != NULL, "Expected valid task pointer");
-    if(!task_ptr) {
+tl_node *_tl_node_create(const char *desc) {
+    if(!desc) {
         return NULL;
     }
 
     tl_node *node = malloc(sizeof(tl_node));
-    ENSURES(node != NULL, "Failed to allocate task list node");
     if(!node) {
         return node;
     }
 
-    task_copy(&node->value, task_ptr);
+    task_init(&node->value, desc);
     node->next = NULL;
+
     return node;
 }
 
 void _tl_node_destroy(tl_node *node) {
-    EXPECTS(node != NULL, "Expected valid node pointer");
     if(!node) {
         return;
+    }
+
+    tl_node *current = node->next;
+    tl_node *prev = NULL;
+    while(current) {
+        prev = current;
+        current = current->next;
+        free(prev);
     }
     free(node);
 }
 
-void task_list_init(task_list *list) {
+size_t _tl_key(const task_list *list, const char *key) {
+    size_t hash = hash_fnv1a_32(key, strlen(key));
+    ENSURES(hash % list->slot_count < list->slot_count, "Key can not be greater than slot count");
+    return hash % list->slot_count;
+}
+
+tl_node * _tl_slot_get(const task_list *list, const size_t slot) {
+    if(!list || !list->slots || list->slot_count == 0 || slot >= list->slot_count) {
+        return NULL;
+    }
+    return list->slots[slot];
+}
+
+void task_list_init(task_list *list, const size_t slots) {
     EXPECTS(list != NULL, "Expected valid list pointer");
+
     if(!list) {
         return;
     }
 
-    list->len = 0;
-    list->head = NULL;
+    list->slots = calloc(slots, sizeof(tl_node*));
+    list->slot_count = slots;
+    ENSURES(list->slots != NULL, "Could not allocate %s slots", slots);
 }
 
 void task_list_clear(task_list *list) {
@@ -45,96 +69,110 @@ void task_list_clear(task_list *list) {
         return;
     }
 
-    tl_node *current = list->head;
-    while(current != NULL) {
-        tl_node *next = current->next;
-        _tl_node_destroy(current);
-        current = next;
+    for(size_t i = 0; i < list->slot_count; ++i) {
+        _tl_node_destroy(list->slots[i]);
     }
-    list->len = 0;
+
+    list->slots = NULL;
+    list->slot_count = 0;
 }
 
-task *task_list_find(const task_list *list, const task_id id) {
+task *task_list_find(const task_list *list, const char *desc) {
     EXPECTS(list != NULL, "Expected valid list pointer");
-    if(!list || list->len == 0) {
+    if(!list || list->slot_count == 0) {
         return NULL;
     }
 
-    tl_node *current = list->head;
-    while(current != NULL) {
-        if(current->value.id == id) {
+    const size_t key = _tl_key(list, desc);
+    tl_node *node = _tl_slot_get(list, key);
+    if(!node) {
+        return NULL;
+    }
+
+    // slot found - if there is no "next", we can immediately return
+    if(!node->next) {
+        return &node->value;
+    }
+
+    // slot found but there are more than one nodes; search through the bucket for the key
+    // since we dont expect to have many collisions, linear search will suffice
+    tl_node *current = node;
+    while(current) {
+        if(strcmp(current->value.description, desc) == 0) {
+            // found exact key
             return &current->value;
         }
         current = current->next;
     }
+
     return NULL;
 }
 
-bool task_list_append(task_list *list, task *task) {
+bool task_list_append(task_list *list, const char *desc) {
     EXPECTS(list != NULL, "Expected valid list pointer");
-    EXPECTS(task != NULL, "Expected valid task pointer");
+    EXPECTS(desc != NULL, "Expected valid key");
 
-    if(!(task && list)) {
+    if(!(list && desc)) {
         return false;
     }
 
-    // check if any collision would occur; regenerate ID until we can not find the ID anymore
-    while(task_list_find(list, task->id) != NULL) {
-        task_regenerate_id(task);
-    }
-
-    tl_node *node = _tl_node_create(task);
+    tl_node *node = _tl_node_create(desc);
     ENSURES(node != NULL, "Could not create node");
     if(!node) {
         return false;
     }
 
-    if(list->len == 0) {
-        list->head = node;
-        list->tail = node;
-        list->len = 1;
+    size_t key = _tl_key(list, desc);
+    tl_node *slot = _tl_slot_get(list, key);
+    if(!slot) {
+        list->slots[key] = node;
         return true;
     }
 
-    EXPECTS(list->tail != NULL, "Expected valid list tail (illegal state)");
-    if(list->tail == NULL) {
-        _tl_node_destroy(node);
-        return false;
+    tl_node *curr = slot;
+    while(curr->next) {
+        curr = curr->next;
     }
+    curr->next = slot;
 
-    list->tail->next = node;
-    list->tail = node;
-    list->len++;
     return true;
 }
 
-bool task_list_remove(task_list *list, const task_id id) {
+bool task_list_remove(task_list *list, const char *desc) {
     EXPECTS(list != NULL, "Expected valid list pointer");
-    if(!list || list->len == 0) {
+    EXPECTS(desc != NULL, "Expected valid key");
+
+    if(!(list && list->slots && desc) || list->slot_count == 0 ) {
         return false;
     }
 
-    if(list->len == 1 && list->head->value.id == id) {
-        _tl_node_destroy(list->head);
-        list->head = NULL;
-        list->tail = NULL;
-        list->len = 0;
+    const size_t key = _tl_key(list, desc);
+    tl_node *node = _tl_slot_get(list, key);
+    if(!node) {
+        // node does not exist
+        return false;
+    }
+
+    if(!node->next) {
+        // slot found - if there is no "next", we can immediately remove it and reset the slot to NULL since it is empty now
+        _tl_node_destroy(node);
+        list->slots[key] = NULL;
         return true;
     }
 
-    tl_node *current = list->head;
+    // slot found but there are more than one nodes; search through the bucket for the key
+    tl_node *current = node;
     tl_node *prev = NULL;
-
-    while(current != NULL) {
+    while(current) {
         prev = current;
-        tl_node *next = current->next;
-        if(current->value.id == id) {
-            prev->next = next;
+        if(strcmp(current->value.description, desc) == 0) {
+            // we found the node; destroy it and move the tail back
             _tl_node_destroy(current);
-            list->len -= 1;
+            prev->next = NULL;
             return true;
         }
-        current = next;
+        current = current->next;
     }
+
     return false;
 }
