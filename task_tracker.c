@@ -8,25 +8,7 @@
 #include "task_list.h"
 #include "debug.h"
 
-// #define _TASKS_TEST_DATA
-
-/*
- * DATA FILE model
- *
- * task -> saved to <...>.task
- *
- * filename = hash
- * content:
- *
- * description len (long, 8 bytes)
- * description characters (char*, #len bytes)
- * status (int, 4 bytes)
- * created_at (int64, 8 bytes)
- * updated_at (int64, 8 bytes)
- *
- * [][][][][][][][][]......[][][][][][][][][][][][][][][][][][][][][]
- * *------len-----**--desc--**status**--created_at--**--updated_at--*
- */
+// #define _TASKS_TEST_DATA // uncomment to insert test data
 
 bool _load_tasks(task_list *list) {
     EXPECTS(list != NULL, "Expected valid list");
