@@ -7,22 +7,6 @@
 #include "task.h"
 #include "hash.h"
 
-tl_node *_tl_node_create(const char *desc) {
-    if(!desc) {
-        return NULL;
-    }
-
-    tl_node *node = malloc(sizeof(tl_node));
-    if(!node) {
-        return node;
-    }
-
-    task_init(&node->value, desc);
-    node->next = NULL;
-
-    return node;
-}
-
 void _tl_node_destroy(tl_node *node) {
     if(!node) {
         return;
@@ -72,9 +56,6 @@ void task_list_clear(task_list *list) {
     for(size_t i = 0; i < list->slot_count; ++i) {
         _tl_node_destroy(list->slots[i]);
     }
-
-    list->slots = NULL;
-    list->slot_count = 0;
 }
 
 task *task_list_find(const task_list *list, const char *desc) {
@@ -116,13 +97,31 @@ bool task_list_append(task_list *list, const char *desc) {
         return false;
     }
 
-    tl_node *node = _tl_node_create(desc);
+    task task;
+    task_init(&task, desc);
+
+    return task_list_insert(list, &task);
+}
+
+
+bool task_list_insert(task_list *list, const task *task) {
+    EXPECTS(list != NULL, "Expected valid list pointer");
+    EXPECTS(task != NULL, "Expected valid task");
+
+    if(!(list && task)) {
+        return false;
+    }
+
+    tl_node *node = malloc(sizeof(tl_node));
     ENSURES(node != NULL, "Could not create node");
     if(!node) {
         return false;
     }
 
-    size_t key = _tl_key(list, desc);
+    node->value = *task;
+    node->next = NULL;
+
+    size_t key = _tl_key(list, node->value.description);
     tl_node *slot = _tl_slot_get(list, key);
     if(!slot) {
         list->slots[key] = node;

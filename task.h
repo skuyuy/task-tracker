@@ -3,6 +3,8 @@
 #include <time.h>
 #include <stdbool.h>
 
+#include "cjson/cJSON.h"
+
 typedef enum _task_status {
     task_status_todo,
     task_status_in_progress,
@@ -17,3 +19,6 @@ typedef struct _task {
 } task;
 
 void task_init(task *task, const char *description);
+
+bool task_serialize(const task *task, cJSON *obj);
+bool task_deserialize(task *task, const cJSON *obj);

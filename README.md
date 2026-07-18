@@ -6,6 +6,7 @@ This project makes use of:
 * Basic C language concepts
 * Unity builds
 * C Standard Library
+* [cJSON](https://github.com/DaveGamble/cJSON) for JSON processing
 
 ## Building
 

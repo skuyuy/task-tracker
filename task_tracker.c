@@ -3,24 +3,29 @@
 #include <string.h>
 #include <time.h>
 
+#include "cjson/cJSON.h"
 #include "task.h"
 #include "task_list.h"
 #include "debug.h"
 
-#define _TASKS_TEST_DATA
+// #define _TASKS_TEST_DATA
 
 /*
  * DATA FILE model
  *
- * task -> saved to file
+ * task -> saved to <...>.task
  *
  * filename = hash
  * content:
  *
- * text
- * status (int)
- * created_at
- * updated_at
+ * description len (long, 8 bytes)
+ * description characters (char*, #len bytes)
+ * status (int, 4 bytes)
+ * created_at (int64, 8 bytes)
+ * updated_at (int64, 8 bytes)
+ *
+ * [][][][][][][][][]......[][][][][][][][][][][][][][][][][][][][][]
+ * *------len-----**--desc--**status**--created_at--**--updated_at--*
  */
 
 bool _load_tasks(task_list *list) {
@@ -28,6 +33,47 @@ bool _load_tasks(task_list *list) {
     if(!list) {
         return false;
     }
+
+    FILE* file = NULL;
+    if(fopen_s(&file, "task_tracker.json", "r") != 0) {
+        return true; // there are just no files present
+    }
+
+    fseek(file, 0, SEEK_END);
+    const long filesize = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    char *buffer = malloc(filesize);
+    if(!buffer) {
+        fclose(file);
+        return false;
+    }
+
+    fread_s(buffer, filesize, 1, filesize, file);
+    fclose(file);
+
+    cJSON *json = cJSON_Parse(buffer);
+    free(buffer);
+    buffer = NULL;
+
+    if(!json) {
+        return false;
+    }
+
+    if(!cJSON_IsArray(json)) {
+        cJSON_Delete(json);
+        return false;
+    }
+
+    cJSON *elem = NULL;
+    cJSON_ArrayForEach(elem, json) {
+        task task = {};
+        if(!task_deserialize(&task, elem)) {
+            continue;
+        }
+
+        task_list_insert(list, &task);
+    }
+    cJSON_Delete(json);
     return true;
 }
 
@@ -36,7 +82,46 @@ bool _save_tasks(task_list *list) {
     if(!list) {
         return false;
     }
-    return true;
+
+    FILE* file = NULL;
+    if(fopen_s(&file, "task_tracker.json", "w") != 0) {
+        return false;
+    }
+
+    cJSON *tasks_json = cJSON_CreateArray();
+    if(!tasks_json) {
+        fclose(file);
+        return false;
+    }
+
+    for(int i = 0; i < list->slot_count; ++i) {
+        tl_node *slot = list->slots[i];
+
+        if(!slot) {
+            continue;
+        }
+
+        while(slot) {
+            cJSON *task_json = cJSON_CreateObject();
+            if(!task_serialize(&slot->value, task_json)) {
+                continue;
+            }
+
+            cJSON_AddItemToArray(tasks_json, task_json);
+            slot = slot->next;
+        }
+    }
+
+    char* content = cJSON_Print(tasks_json);
+    bool result = false;
+    if(content && fprintf_s(file, "%s", content) != 0) {
+        result = true;
+    }
+
+    cJSON_Delete(tasks_json);
+    fclose(file);
+    free(content);
+    return result;
 }
 
 void task_cmd_help() {
@@ -332,7 +417,7 @@ int main(int argc, char **argv) {
         return _hint_improper_usage("Command not found");
     }
 
-    if(result == EXIT_SUCCESS && _save_tasks(&tasks)) {
+    if(result == EXIT_SUCCESS && !_save_tasks(&tasks)) {
         fprintf(stderr, "Could not save tasks");
         return EXIT_FAILURE;
     }
@@ -343,3 +428,4 @@ int main(int argc, char **argv) {
 #include "debug.c"
 #include "task.c"
 #include "task_list.c"
+#include "cjson/cJSON.c"
